@@ -3,32 +3,35 @@ using Azure.Communication.CallAutomation;
 using Azure.Messaging;
 using Azure.Messaging.EventGrid;
 using Azure.Messaging.EventGrid.SystemEvents;
+using Azure.Identity;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 // Your ACS resource connection string
-var acsConnectionString = "<ACS_CONNECTION_STRING>";
+var acsConnectionString = "endpoint=https://voicecallsresource.unitedstates.communication.azure.com/;accesskey=7ti8DW9LzHA0rm+mgcyt1cHR2LjYyq1yVI+Hmx3o3A4c5WBib5ZQ1fZL/nRp6FccIx5emB/maWhuQmFKXgOVwg==";
 
 // Your ACS resource phone number will act as source number to start outbound call
-var acsPhonenumber = "<ACS_PHONE_NUMBER>";
+var acsPhonenumber = "+18337406500"; // <<< purchased phone number that can be within Azure under VoiceCallResource under the sub menu called Phone Numbers.  You bought this one for 2 dollars.
+
+//"+18332522649" <<< expired free phone number.., its no longer needed we should delete this comment;
 
 // Target phone number you want to receive the call.
-var targetPhonenumber = "<TARGET_PHONE_NUMBER>";
+var targetPhonenumber = "+15038398829";
 
 // Base url of the app
-var callbackUriHost = "<CALLBACK_URI_HOST_WITH_PROTOCOL>";
+var callbackUriHost = "https://3c4sw5b5.usw2.devtunnels.ms:8080"; //"https://9l8c8q7t.usw2.devtunnels.ms:8080";
 
 // Your cognitive service endpoint
-var cognitiveServiceEndpoint = "<COGNITIVE_SERVICE_ENDPOINT>";
+var cognitiveServiceEndpoint = "https://mobullzai.cognitiveservices.azure.com/";
 
 // text to play
 const string SpeechToTextVoice = "en-US-NancyNeural";
 const string MainMenu =
     """ 
-    Hello this is Contoso Bank, we’re calling in regard to your appointment tomorrow 
-    at 9am to open a new account. Please say confirm if this time is still suitable for you or say cancel 
+    Hello this is Contoso Bank, weï¿½re calling in regard to your appointment tomorrow 
+    at 9am to open a new account. Please say confirm or press 1 if this time is still suitable for you or say cancel or press 2  
     if you would like to cancel this appointment.
     """;
 const string ConfirmedText = "Thank you for confirming your appointment tomorrow at 9am, we look forward to meeting with you.";
@@ -36,13 +39,23 @@ const string CancelText = """
 Your appointment tomorrow at 9am has been cancelled. Please call the bank directly 
 if you would like to rebook for another date and time.
 """;
-const string CustomerQueryTimeout = "I’m sorry I didn’t receive a response, please try again.";
+const string CustomerQueryTimeout = "Iï¿½m sorry I didnï¿½t receive a response, please try again.";
 const string NoResponse = "I didn't receive an input, we will go ahead and confirm your appointment. Goodbye";
-const string InvalidAudio = "I’m sorry, I didn’t understand your response, please try again.";
+const string InvalidAudio = "Iï¿½m sorry, I didnï¿½t understand your response, please try again.";
 const string ConfirmChoiceLabel = "Confirm";
 const string RetryContext = "retry";
 
-CallAutomationClient callAutomationClient = new CallAutomationClient(acsConnectionString);
+
+var options = new DefaultAzureCredentialOptions {
+    ManagedIdentityClientId = "d71fd077-68e8-44bb-b103-f4bc7e29204b"
+};
+
+var credential = new DefaultAzureCredential(options);
+
+var uri = new Uri("https://voicecallsresource.unitedstates.communication.azure.com/");
+
+CallAutomationClient callAutomationClient = new CallAutomationClient(uri, credential, null);
+
 var app = builder.Build();
 
 app.MapPost("/outboundCall", async (ILogger<Program> logger) =>

@@ -13,6 +13,7 @@ public static class Helper
     {
         return JsonNode.Parse(data).AsObject();
     }
+
     public static async Task<string> ProvisionAcsIdentity(string connectionString)
     {
         var client = new CommunicationIdentityClient(connectionString);

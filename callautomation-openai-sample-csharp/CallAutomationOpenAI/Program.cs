@@ -8,8 +8,31 @@ using Azure.Messaging.EventGrid.SystemEvents;
 using Microsoft.AspNetCore.Mvc;
 using System.ComponentModel.DataAnnotations;
 using System.Text.RegularExpressions;
+using Microsoft.CognitiveServices.Speech; // Import for Azure AI Speech
+
+
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Additional Azure AI Speech configurations
+var speechServiceKey = builder.Configuration.GetValue<string>("SpeechServiceKey");
+ArgumentNullException.ThrowIfNullOrEmpty(speechServiceKey);
+
+var speechServiceRegion = builder.Configuration.GetValue<string>("SpeechServiceRegion");
+ArgumentNullException.ThrowIfNullOrEmpty(speechServiceRegion);
+
+var speechConfig = SpeechConfig.FromSubscription(speechServiceKey, speechServiceRegion);
+
+// Existing code continues...
+
+// Jeff this url below is pricing for AzureOpenAI which you want to use and it is NOT OpenAI directly but instead Microsoft Wrapping OpenAI
+// https://azure.microsoft.com/en-us/pricing/details/cognitive-services/speech-services/
+
+// Jeff this url below is for sentiment analysis. Its about 1 dollar for 9.67 hours of single person talking at 150 words per minute.
+// https://azure.microsoft.com/en-us/pricing/details/cognitive-services/language-service/
+
+// Jeff below are the support plans with Microsoft under jeff@mobullz.com and you currently are paying 100 dollars a month for standard support
+// https://azure.microsoft.com/en-us/support/plans/
 
 //Get ACS Connection String from appsettings.json
 var acsConnectionString = builder.Configuration.GetValue<string>("AcsConnectionString");
@@ -34,12 +57,12 @@ string answerPromptSystemTemplate = """
     """;
 
 string helloPrompt = "Hello, thank you for calling! How can I help you today?";
-string timeoutSilencePrompt = "I’m sorry, I didn’t hear anything. If you need assistance please let me know how I can help you.";
+string timeoutSilencePrompt = "Iï¿½m sorry, I didnï¿½t hear anything. If you need assistance please let me know how I can help you.";
 string goodbyePrompt = "Thank you for calling! I hope I was able to assist you. Have a great day!";
 string connectAgentPrompt = "I'm sorry, I was not able to assist you with your request. Let me transfer you to an agent who can help you further. Please hold the line and I'll connect you shortly.";
-string callTransferFailurePrompt = "It looks like all I can’t connect you to an agent right now, but we will get the next available agent to call you back as soon as possible.";
-string agentPhoneNumberEmptyPrompt = "I’m sorry, we're currently experiencing high call volumes and all of our agents are currently busy. Our next available agent will call you back as soon as possible.";
-string EndCallPhraseToConnectAgent = "Sure, please stay on the line. I’m going to transfer you to an agent.";
+string callTransferFailurePrompt = "It looks like all I canï¿½t connect you to an agent right now, but we will get the next available agent to call you back as soon as possible.";
+string agentPhoneNumberEmptyPrompt = "Iï¿½m sorry, we're currently experiencing high call volumes and all of our agents are currently busy. Our next available agent will call you back as soon as possible.";
+string EndCallPhraseToConnectAgent = "Sure, please stay on the line. Iï¿½m going to transfer you to an agent.";
 
 string transferFailedContext = "TransferFailed";
 string connectAgentContext = "ConnectAgent";
@@ -59,6 +82,8 @@ var ai_client = new OpenAIClient(new Uri(endpoint), new AzureKeyCredential(key))
 //Register and make CallAutomationClient accessible via dependency injection
 builder.Services.AddSingleton(client);
 builder.Services.AddSingleton(ai_client);
+
+//Existing Code Continues...
 var app = builder.Build();
 
 var devTunnelUri = builder.Configuration.GetValue<string>("DevTunnelUri");
@@ -290,22 +315,26 @@ async Task<string> GetChatGPTResponse(string speech_input)
 
 async Task<string> GetChatCompletionsAsync(string systemPrompt, string userPrompt)
 {
+    
     var chatCompletionsOptions = new ChatCompletionsOptions()
     {
+        
         Messages = {
-                    new ChatMessage(ChatRole.System, systemPrompt),
-                    new ChatMessage(ChatRole.User, userPrompt),
+                    new ChatRequestSystemMessage(systemPrompt),
+                    new ChatRequestUserMessage(userPrompt),
                     },
         MaxTokens = 1000
     };
 
-    var response = await ai_client.GetChatCompletionsAsync(
-        deploymentOrModelName: builder.Configuration.GetValue<string>("AzureOpenAIDeploymentModelName"),
-        chatCompletionsOptions);
+    var response = await ai_client.GetChatCompletionsAsync(chatCompletionsOptions);
+        //deploymentOrModelName: builder.Configuration.GetValue<string>("AzureOpenAIDeploymentModelName"),
+        //chatCompletionsOptions);
 
     var response_content = response.Value.Choices[0].Message.Content;
     return response_content;
 }
+
+
 
 async Task HandleRecognizeAsync(CallMedia callConnectionMedia, string callerId, string message)
 {
@@ -314,6 +343,27 @@ async Task HandleRecognizeAsync(CallMedia callConnectionMedia, string callerId, 
     {
         VoiceName = "en-US-NancyNeural"
     };
+
+    // Use Azure AI Speech SDK for text-to-speech
+    using var synthesizer = new SpeechSynthesizer(speechConfig, null);
+
+    var result = await synthesizer.SpeakTextAsync(message);
+    if (result.Reason == ResultReason.SynthesizingAudioCompleted)
+    {
+        Console.WriteLine($"Speech synthesized for text: '{message}'");
+    }
+    else if (result.Reason == ResultReason.Canceled)
+    {
+        var cancellation = SpeechSynthesisCancellationDetails.FromResult(result);
+        Console.WriteLine($"CANCELED: Reason={cancellation.Reason}");
+
+        if (cancellation.Reason == CancellationReason.Error)
+        {
+            Console.WriteLine($"CANCELED: ErrorCode={cancellation.ErrorCode}");
+            Console.WriteLine($"CANCELED: ErrorDetails={cancellation.ErrorDetails}");
+            Console.WriteLine($"CANCELED: Did you update the subscription info?");
+        }
+    }
 
     var recognizeOptions =
         new CallMediaRecognizeSpeechOptions(
@@ -327,6 +377,38 @@ async Task HandleRecognizeAsync(CallMedia callConnectionMedia, string callerId, 
         };
 
     var recognize_result = await callConnectionMedia.StartRecognizingAsync(recognizeOptions);
+}
+
+
+// Additional method to handle speech-to-text using Azure AI Speech SDK
+async Task<string> RecognizeSpeechAsync(CallMedia callConnectionMedia, string callerId)
+{
+    // Use Azure AI Speech SDK for speech-to-text
+    using var recognizer = new SpeechRecognizer(speechConfig, "en-US");
+
+    var result = await recognizer.RecognizeOnceAsync();
+    if (result.Reason == ResultReason.RecognizedSpeech)
+    {
+        Console.WriteLine($"Recognized: {result.Text}");
+        return result.Text;
+    }
+    else if (result.Reason == ResultReason.NoMatch)
+    {
+        Console.WriteLine("No speech could be recognized.");
+    }
+    else if (result.Reason == ResultReason.Canceled)
+    {
+        var cancellation = CancellationDetails.FromResult(result);
+        Console.WriteLine($"CANCELED: Reason={cancellation.Reason}");
+
+        if (cancellation.Reason == CancellationReason.Error)
+        {
+            Console.WriteLine($"CANCELED: ErrorCode={cancellation.ErrorCode}");
+            Console.WriteLine($"CANCELED: ErrorDetails={cancellation.ErrorDetails}");
+            Console.WriteLine($"CANCELED: Did you update the subscription info?");
+        }
+    }
+    return string.Empty;
 }
 
 async Task HandlePlayAsync(string textToPlay, string context, CallMedia callConnectionMedia)
