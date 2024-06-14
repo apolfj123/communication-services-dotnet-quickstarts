@@ -11,7 +11,6 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 
-
 // Your ACS resource connection string
 //var acsConnectionString = "endpoint=https://voicecallsresource.unitedstates.communication.azure.com/;accesskey=7ti8DW9LzHA0rm+mgcyt1cHR2LjYyq1yVI+Hmx3o3A4c5WBib5ZQ1fZL/nRp6FccIx5emB/maWhuQmFKXgOVwg==";
 
